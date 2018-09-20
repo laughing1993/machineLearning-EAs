@@ -1,0 +1,409 @@
+import glob as gb
+import numpy as np
+def fileToMatrix(filename,numberOfFeatures):
+    """
+    将文件中的数据集读入并转换为矩阵形式
+    :param filename: 要读入数据的文件夹路径
+    :return: 数据集x
+    """
+    subfile_paths = gb.glob(filename+"\*.txt")
+    returnMat = np.empty(shape=(0, numberOfFeatures+1))
+    classLaberVector = []
+    for subfile_path in subfile_paths:
+        with open(subfile_path, 'r', encoding='utf-8') as fr:
+            # 获得文件中数据的行数
+            numberOfLiners = len(fr.readlines())
+            # 生成对应的空矩阵
+            returnmat = np.zeros((numberOfLiners, numberOfFeatures+1))
+            index = 0
+            fr = open(subfile_path)
+            for line in fr.readlines():
+                line1 = line.strip()
+                listFormLine = line1.split()  # listFormLine为list型，list中的元素为str型，不带参数时，以空格进行分割
+                returnmat[index, :] = listFormLine
+                index += 1
+        returnMat = np.vstack((returnMat,returnmat)) # 将两个矩阵按行合并成一个矩阵
+    return returnMat
+# 中心化后再标准化
+def autoNorm(dataset,numberOfFaeatures):
+    """
+    DESC:
+        归一化特征值，消除特征值量级之间的不同导致的影响
+    :param dataset: 需要归一化的数据集(X)
+    :return: 返回归一化后的数据集
+    """
+    normDataSet = np.zeros(np.shape(dataset))  # 用于存储归一化后的数据
+    minVals = dataset.min(axis=0)
+    maxVals = dataset.max(axis=0)
+    ranges = maxVals - minVals
+    for i in np.arange(numberOfFaeatures):
+        Max = max(dataset[:, i])
+        Min = min(dataset[:, i])
+        index = 0
+        for h in dataset[:, i]:
+            normDataSet[index, i] = (h - Min) / (Max - Min)
+            index += 1
+    # ####另一种方法
+    # # 计算每种属性的最大值、最小值、范围
+    # minVals = dataSet.min(0)
+    # maxVals = dataSet.max(0)
+    # # 极差
+    # ranges = maxVals - minVals
+    # normDataSet = zeros(shape(dataSet))
+    # m = dataSet.shape[0]
+    # # 生成与最小值之差组成的矩阵
+    # normDataSet = dataSet - tile(minVals, (m, 1))
+    # # 将最小值之差除以范围组成矩阵
+    # normDataSet = normDataSet / tile(ranges, (m, 1))
+    return normDataSet
+
+
+import numpy as np
+from sklearn.svm import SVR
+
+class svr_Traning():
+
+
+    def __init__(self):
+        pass
+
+
+    def _SVR(self, X, y, c, Gamma):
+        """
+        训练SVR
+        :param X: 训练集输入(X)
+        :param y: 训练集输出(Y)
+        :param c: 正则化参数
+        :param Gamma: 核函数参数
+        :return: 训练好的SVR模型
+        """
+        svr_rbf = SVR(kernel='rbf', gamma=Gamma, C=c, epsilon=0.1)  # 高斯核函数，C学习率，gamma为核函数参数
+        svr_rbf.fit(X, y)
+        return svr_rbf
+
+
+    def SVR_Training(self,dataset, label, Ratio):
+        """
+        训练SVR模型,得到较好的超参数
+        :param dataset: 归一化后的整个数据集
+        :param Ratio: 测试集所占比例
+        :param label: 标签y
+        :return: 性能较好的SVR模型
+        """
+        row = dataset.shape[0]
+        # 测试集个数
+        numTestVecs = int(Ratio * row)
+
+        minMSE = 1000  # 用于存放最小均方根误差
+        hyperParams = np.ones(2, np.float32)  # 用于存放较好的超参数,便于查看
+        bestSVRModel = self._SVR(dataset[numTestVecs:row, :], label[numTestVecs:row], 2, 0.1)
+        for c in np.arange(1, 3, 0.5):
+            for gamma in np.arange(0.4, 0.7, 0.01):
+                svrModel = self._SVR(dataset[numTestVecs:row, :], label[numTestVecs:row], c, gamma)
+                # 通过测试集，获得该模型下的均方根误差
+                predictValueMat = np.zeros(numTestVecs)
+                for i in np.arange(numTestVecs):
+                    nn = np.array([dataset[i, :]])
+                    predictValueMat[i] = svrModel.predict(nn)
+                MSE = (np.sum((label[0:numTestVecs] - predictValueMat) ** 2.0) / numTestVecs) ** 0.5
+                if MSE < minMSE:
+                    minMSE = MSE
+                    hyperParams = [c, gamma]
+                    bestSVRModel = svrModel
+        return bestSVRModel
+        
+ 
+from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+
+class randomForest_Training():
+
+
+    def __init__(self):
+        pass
+
+
+    def _RandomForestRegressor(self, dataset, label,numberOfEstimator):
+        """
+        随机森林分类器
+        :param dataset:训练集输入（X）
+        :param label:训练集输出（Y）
+        :param numberOfEstimator:决策树的个数（n_estimator）
+        :return: 训练好的随机森林分类器模型
+        """
+        rf = RandomForestRegressor(n_estimators=numberOfEstimator)
+        rf.fit(dataset, label)
+        return rf
+
+
+    def randomforestTraining(self,dataset,label):
+        #测试集所占比例
+        ratio = 1/3
+        row = dataset.shape[0]
+        # 测试集个数
+        numTestVecs = int(ratio * row)
+        # 训练集
+        dataset_training = dataset[:-1*numTestVecs]
+        # 测试集
+        dataset_testing = dataset[-1*numTestVecs:]
+        #存放n_estimator最优值，便于查看
+        best_n_estimator = 0
+        #存放最优的随机森林模型coefficient（该值越大越好）
+        bestCoefficient = -1000
+        best_rf_model = self._RandomForestRegressor(dataset_training,label[:-1*numTestVecs],5)
+        #用于存放最优的
+        for n_estimator in np.arange(10)+5:
+            rf_model = self._RandomForestRegressor(dataset_training,label[:-1*numTestVecs],n_estimator)
+            coefficient = rf_model.score(dataset_testing,label[-1*numTestVecs:])
+            if coefficient > bestCoefficient :
+                bestCoefficient = coefficient
+                best_n_estimator = n_estimator
+                best_rf_model = rf_model
+        coefficient = best_rf_model.score(dataset, label)
+        print("该随机森林模型在整个数据集上的the coefficient of determination R^2 of the prediction为： " + str(coefficient))
+        return  best_rf_model
+
+import numpy as np
+from SVR_Training import svr_Traning
+
+class SVR_featuresImportances():
+
+
+    def __init__(self):
+        pass
+
+
+    def dataProcessing(self, dataSet, col):
+        """
+        除了第col列，对其他列求平均值，其他列的数据用各列的平均值代替
+        :param dataSet: 要处理的数据集(归一化后的数据)
+        :param col: 不需要求平均值的列
+        :return: 返回处理好的数据集
+        """
+        m, n = np.shape(dataSet)  # dataset的行列数
+        dataSet1 = np.zeros(np.shape(dataSet))  # 用于存储处理好后的数据
+        for i in np.arange(n):
+            if i != col:
+                Mean = np.mean(dataSet[:, i])
+                dataSet1[:, i] = Mean
+            elif i == col:
+                dataSet1[:, i] = dataSet[:, i]
+        return dataSet1
+
+
+    def SVRMainFunction(self,data1,label1):
+        """
+        主函数 data1为归一化后的数据集
+        :return: 排序后的结果
+        """
+        SVRTraining = svr_Traning()
+        data1 = np.array(data1)
+        label1 = np.array(label1)
+        Ratio = 1/3
+        RModel = SVRTraining.SVR_Training(data1,label1,Ratio)
+        # 整个数据集上的均方根误差
+        row = data1.shape[0]
+        predictValueMat1 = np.zeros(row)
+        for i in np.arange(row):
+            mm = np.array([data1[i, :]])
+            predictValueMat1[i] = RModel.predict(mm)
+        MSE1 = (np.sum((label1[0:row] - predictValueMat1) ** 2.0) / row) ** 0.5
+        print(predictValueMat1)
+        print("整个数据集上的均方根误差为： " + str(MSE1))
+
+        row = data1.shape[0]
+        col = data1.shape[1]
+        vaMat = np.zeros(col)  # 用来存储variance
+
+        # 注意需要用归一化后的数据进行预测和求variance
+        for i in np.arange(col):
+            data3 = self.dataProcessing(data1, i)
+            predictValueMat2 = np.zeros(row)
+            for j in np.arange(row):
+                mm = np.array([data3[j, :]])
+                predictValueMat2[j] = RModel.predict(mm)
+            vaMat[i] = np.sum((predictValueMat2 - np.sum(predictValueMat2) / row) ** 2.0) / (row - 1)
+        raMat = vaMat / (vaMat.sum())
+        return raMat
+import numpy as np
+# 从其他模块中导入类，对类初始化后，用类变量调用类方法
+# from RandomForest_Training import randomForest_Training
+
+def FreedomForestMainFunction(data1, label1):
+    """
+    主函数
+    :return: 分类问题排序后结果
+    """
+    randomForestTraining = randomForest_Training()
+    data1 = np.array(data1)
+    label1 = np.array(label1)
+    m, n = data1.shape
+    rf = randomForestTraining.randomforestTraining(data1,label1)
+    FI = rf.feature_importances_
+    return FI
+    
+
+##  主函数
+import RandomForest_Training
+import SVR_Training
+from SVR_featuresImportances import SVR_featuresImportances
+from RandomForest_featuresImportances import FreedomForestMainFunction
+import readingDataset
+import glob as gb
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+if "__main__" == __name__:
+    # 初始化类变量
+    numberOfFeatures = 57
+    # 正常带钢数据文件夹地址
+    stripData_normal_path = r"C:\Users\wangyao\Desktop\StripData\StripData_normal"
+    # 不正常带钢数据文件夹地址
+    stripData_abnormal_path = r"C:\Users\wangyao\Desktop\StripData\StripData_abnormal"
+    # 读入数据并归一化
+    stripData_normal_Mat = readingDataset.fileToMatrix(stripData_normal_path,numberOfFeatures)
+    np.random.shuffle(stripData_normal_Mat)  # 将矩阵按行打乱，重新组合
+    stripData_normal_Mat_Norm = readingDataset.autoNorm(stripData_normal_Mat[:,0:-1],numberOfFeatures)
+    stripData_abnormal_Mat = readingDataset.fileToMatrix(stripData_abnormal_path, numberOfFeatures)
+    np.random.shuffle(stripData_abnormal_Mat)
+    stripData_abnormal_Mat_Norm = readingDataset.autoNorm(stripData_abnormal_Mat[:,0:-1],numberOfFeatures)
+    stripData_Mat = np.vstack((stripData_normal_Mat,stripData_abnormal_Mat))
+    np.random.shuffle(stripData_Mat)
+    stripData_Mat_Norm = readingDataset.autoNorm(stripData_Mat[:,0:-1],numberOfFeatures)
+
+    Features = []
+    Features_path = r"C:\Users\wangyao\Desktop\StripData\features_En.txt"
+    with open(Features_path) as fr:
+        index = 0
+        for line in fr.readlines():
+            line1 = line.strip()
+            listFormLine = line1.split()  # listFormLine为list型，list中的元素为str型，不带参数时，以空格进行分割
+            Features.append(listFormLine)
+            index += 1
+    for j in np.arange(3):
+        if j == 0:
+            dataset = stripData_normal_Mat_Norm
+            label = stripData_normal_Mat[:, -1]
+            f_noraml = open(r"正常数据结果",'w')
+        elif j == 1:
+            dataset = stripData_abnormal_Mat_Norm
+            label = stripData_abnormal_Mat[:, -1]
+            f_abnoraml = open(r"不正常数据结果", 'w')
+        elif j == 2:
+            dataset = stripData_Mat_Norm
+            label = stripData_Mat[:, -1]
+            f_mixed = open(r"正常和不正常数据混合结果", 'w')
+        ################################################################################
+        # 使用SVR进行特征值排序并绘制直方图
+        SVRFeaturesImportances = SVR_featuresImportances()
+        raMat = SVRFeaturesImportances.SVRMainFunction(dataset, label).astype(np.float32)
+        # 对mseMat进行从小到大排序
+        raMat1 = raMat.argsort()  # 返回的是排序后的索引
+        raMat2 = sorted(raMat)  # 返回的是排序后的元素值
+        Features1 = list()
+        for i in np.arange(numberOfFeatures):
+            Features1.append(Features[raMat1[i]][0])
+        ########################################################################
+        # plt.figure("SVR———特征重要性排序")
+        # plt.subplot(111)
+        # plt.bar(np.arange(numberOfFeatures) + 1, raMat2)
+        # plt.ylabel(u"features Importance")
+        # plt.xlabel(u"features")
+        # plt.xticks(np.arange(numberOfFeatures) + 1, Features1)
+        # plt.legend(u"p")
+        # plt.title(U"The bar of Features Importance(SVR)")
+        #################################################################################
+        # 使用Freedom Forest进行特征值排序并绘制直方图
+        FI = FreedomForestMainFunction(dataset,label).astype(np.float32)
+        FI1 = FI.argsort()  # 返回的是排序后的索引
+        FI2 = sorted(FI)  # 返回的是排序后的元素值
+        ########################################################################
+        Features2 = list()
+        for i in np.arange(numberOfFeatures):
+            Features2.append(Features[FI1[i]][0])
+        # plt.figure("(随机森林特)征重要性排序")
+        # rect = plt.bar(range(len(FI)), FI2)
+        # plt.ylabel(u"features Importance")
+        # plt.xlabel(u"features")
+        # plt.xticks(np.arange(numberOfFeatures), Features1)
+        # plt.legend((rect,), u"p")
+        # plt.title(u"The bar of Features Importance(Freedom Forest)")
+        #####################################################################################
+        # 将两种方法得到的各特征进行加权平均后绘制直方图
+        ramat_mixed1 = 2.0 * (raMat - raMat.min()) / (raMat.max() - raMat.min()) - 1.0
+        print("svr中va归一化后: ")
+        print(ramat_mixed1)
+        ramat_mixed2 = 2.0 * (FI - FI.min()) / (FI.max() - FI.min()) - 1.0
+        print("随机森林中featuresImportances归一化后： ")
+        print(ramat_mixed2)
+        ramat_mixed3 = 0.5 * ramat_mixed1 + 0.5 * ramat_mixed2
+        raMat_mixed4 = ramat_mixed3.argsort()  # 返回的是排序后的索引
+        raMat_mixed5 = sorted(ramat_mixed3)  # 返回的是排序后的元素值
+        Features3 = list()
+        for i in np.arange(numberOfFeatures):
+            Features3.append(Features[raMat_mixed4[i]][0])
+        print("########################################################################")
+        # plt.figure("(SVR+随机森林)特征重要性排序")
+        # plt.bar(np.arange(numberOfFeatures) + 1, raMat_mixed5)
+        # plt.ylabel(u"features Importance")
+        # plt.xlabel(u"features")
+        # plt.xticks(np.arange(numberOfFeatures) + 1, Features1)
+        # plt.legend(u"p")
+        # plt.title(U"The bar of Features Importance(SVR+Freedom Forest)")
+        #########################################################################################
+        if j==0:
+            f_noraml.write("every feature's value of Va:\n")
+            f_noraml.write(str(raMat2) + "\n")
+            f_noraml.write("(SVR)features importances:\n")
+            f_noraml.write(str(Features1)+"\n")
+            f_noraml.write("every feature's value of featuresImportances:\n")
+            f_noraml.write(str(FI2) + "\n")
+            f_noraml.write("(random forest)features importances:\n")
+            f_noraml.write(str(Features2) + "\n")
+            f_noraml.write("every feature's value of featuresImportances+Va:\n")
+            f_noraml.write(str(raMat_mixed5) + "\n")
+            f_noraml.write("(SVR + random forest)features importances:\n")
+            f_noraml.write(str(Features3) + "\n")
+            f_noraml.close()
+        elif j==1:
+            f_abnoraml.write("every feature's value of Va:\n")
+            f_abnoraml.write(str(raMat2) + "\n")
+            f_abnoraml.write("(SVR)features importances:\n")
+            f_abnoraml.write(str(Features1) + "\n")
+            f_abnoraml.write("every feature's value of featuresImportances:\n")
+            f_abnoraml.write(str(FI2) + "\n")
+            f_abnoraml.write("(random forest)features importances:\n")
+            f_abnoraml.write(str(Features2) + "\n")
+            f_abnoraml.write("every feature's value of featuresImportances+Va:\n")
+            f_abnoraml.write(str(raMat_mixed5) + "\n")
+            f_abnoraml.write("(SVR + random forest)features importances:\n")
+            f_abnoraml.write(str(Features3) + "\n")
+            f_abnoraml.close()
+        elif j==2:
+            f_mixed.write("every feature's value of Va:\n")
+            f_mixed.write(str(raMat2) + "\n")
+            f_mixed.write("(SVR)features importances:\n")
+            f_mixed.write(str(Features1) + "\n")
+            f_mixed.write("every feature's value of featuresImportances:\n")
+            f_mixed.write(str(FI2) + "\n")
+            f_mixed.write("(random forest)features importances:\n")
+            f_mixed.write(str(Features2) + "\n")
+            f_mixed.write("every feature's value of featuresImportances+Va:\n")
+            f_mixed.write(str(raMat_mixed5) + "\n")
+            f_mixed.write("(SVR + random forest)features importances:\n")
+            f_mixed.write(str(Features3) + "\n")
+            f_mixed.close()
+    # plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
